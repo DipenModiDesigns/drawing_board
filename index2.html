@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Fabric.js Drawing Board</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script src="https://unpkg.com/fabric@latest/src/mixins/eraser_brush.mixin.js"></script>
+</head>
+
+<body>
+  <canvas id="myCanvas" width="600" height="400" style="border: 1px solid black"></canvas>
+
+  <button id="addRect">Add Rectangle</button>
+  <button id="addCircle">Add Circle</button>
+  <button id="addLine">Add Line</button>
+  <button id="undo">Undo</button>
+  <button id="addTriangle">Add Triangle</button>
+  <button id="clearCanvas">Clear Canvas</button>
+  <button id="addText">Add Text</button>
+  <button id="addEraser">Add Eraser</button>
+  <input type="file" name="image" id="addImage">
+  <select id="fontFamilySelector">
+    <option value="Times New Roman">Select Font</option>
+    <option value="Arial">Arial</option>
+    <option value="Times New Roman">Times New Roman</option>
+    <option value="Verdana">Verdana</option>
+  </select>
+  <label for="strokeWidth">Stroke Width:</label>
+  <input type="range" id="strokeWidth" min="1" max="20" value="5">
+  <label for="fillColor">Fill Color:</label>
+  <input type="color" id="fillColor" value="#FF0000">
+  <label for="strokeColor">Stroke Color:</label>
+  <input type="color" id="strokeColor" value="#000000">
+
+  <button id="zoomInButton">Zoom In</button>
+  <button id="zoomOutButton">Zoom Out</button>
+
+  <script>
+    // Initialize the canvas and variables
+    window.addEventListener('DOMContentLoaded', function () {
+      // Initialize the canvas
+      let canvas = new fabric.Canvas('myCanvas');
+
+      let history = []; // Array to store canvas states for undo
+      let currentStrokeWidth = 5; // Initial stroke width
+      let currentFillColor = '#FF0000'; // Initial fill color
+      let currentStrokeColor = '#000000'; // Initial stroke color
+
+      // Add event listeners for buttons and input
+      document.getElementById('addRect').addEventListener('click', addRect);
+      document.getElementById('addCircle').addEventListener('click', addCircle);
+      document.getElementById('addLine').addEventListener('click', startDrawingLine);
+      document.getElementById('undo').addEventListener('click', undo);
+      document.getElementById('strokeWidth').addEventListener('change', setStrokeWidth);
+      document.getElementById('fillColor').addEventListener('change', setFillColor);
+      document.getElementById('strokeColor').addEventListener('change', setStrokeColor);
+      document.getElementById('addTriangle').addEventListener('click', addTriangle);
+      document.getElementById('addText').addEventListener('click', addText);
+      document.getElementById('addImage').addEventListener('change', addImage);
+      document.getElementById('clearCanvas').addEventListener('click', clearCanvas);
+      // Add a button for the eraser tool
+      document.getElementById('addEraser').addEventListener('click', startErasing);
+
+      document.getElementById('zoomInButton').addEventListener('click', function () {
+        zoom(1.2); // Zoom in by 20%
+      });
+
+      document.getElementById('zoomOutButton').addEventListener('click', function () {
+        zoom(0.8); // Zoom out by 20%
+      });
+
+
+
+      // Check if there's saved canvas data in local storage
+      let canvasData = localStorage.getItem('canvasData');
+
+      if (canvasData) {
+        // Load the canvas objects from the JSON data
+        canvas.loadFromJSON(canvasData, canvas.renderAll.bind(canvas));
+      }
+
+
+      // Functions for clarity and reusability
+      function addRect(event) {
+        let rect = new fabric.Rect({
+          left: 100,
+          top: 100,
+          width: 50,
+          height: 50,
+          fill: currentFillColor, // Apply fill color
+          strokeWidth: currentStrokeWidth,
+          stroke: currentStrokeColor // Apply stroke color
+        });
+        canvas.add(rect);
+        saveCanvasState();
+      }
+
+      function addCircle(event) {
+        let circle = new fabric.Circle({
+          left: 100,
+          top: 100,
+          radius: 25,
+          fill: currentFillColor, // Apply fill color
+          strokeWidth: currentStrokeWidth,
+          stroke: currentStrokeColor // Apply stroke color
+        });
+        canvas.add(circle);
+        saveCanvasState();
+      }
+
+      function startDrawingLine() {
+        canvas.isDrawingMode = true;
+        canvas.freeDrawingBrush.width = currentStrokeWidth;
+        canvas.freeDrawingBrush.color = currentStrokeColor;
+        canvas.on('mouse:up', function () {
+          canvas.isDrawingMode = false;
+          saveCanvasState();
+        });
+      }
+
+      function addTriangle(event) {
+        let triangle = new fabric.Triangle({
+          left: 100,
+          top: 100,
+          width: 100,
+          height: 100,
+          fill: currentFillColor,
+          strokeWidth: currentStrokeWidth,
+          stroke: currentStrokeColor,
+          // angle: 45 // Optional: Set initial rotation angle
+        });
+        canvas.add(triangle);
+        saveCanvasState();
+      }
+
+      function addText(event) {
+        let text = new fabric.Textbox("New Text", {
+          left: 100,
+          top: 100,
+          width: 50,
+          fontSize: 20,
+          fill: currentFillColor, // Apply current fill color
+          strokeWidth: 0,
+          // stroke: currentStrokeColor // Apply current stroke color
+        });
+        canvas.add(text);
+        saveCanvasState();
+      }
+
+      function addImage(event) {
+        let file = event.target.files[0];
+
+        let reader = new FileReader();
+        reader.onload = function (e) {
+          let image = new Image();
+          image.onload = function () {
+            try {
+              let fabricImage = new fabric.Image(image, {
+                left: canvas.getWidth() / 2 - image.width / 2,
+                top: canvas.getHeight() / 2 - image.height / 2,
+                width: image.width,
+                height: image.height,
+              });
+              canvas.add(fabricImage);
+              saveCanvasState();
+            } catch (error) {
+              console.error("Error adding image:", error);
+              alert("An error occurred while adding the image. Please try again.");
+            }
+          };
+          image.src = e.target.result; // Set image source from the loaded file data
+        };
+        reader.readAsDataURL(file); // Read the file as a data URL
+      }
+
+      function undo() {
+        try {
+          if (history.length > -1) {
+            let previousState = history.pop();
+            canvas.clear();
+            canvas.loadFromJSON(previousState, canvas.renderAll.bind(canvas));
+          }
+        } catch (error) {
+          console.error("Error while undoing:", error);
+          alert("An error occurred while undoing the previous action.");
+        }
+        let canvasJSON = JSON.stringify(canvas);
+
+        // Store the JSON in local storage
+        localStorage.setItem('canvasData', canvasJSON);
+      }
+
+      function startErasing() {
+        canvas.freeDrawingBrush = new fabric.EraserBrush(canvas);
+        canvas.isDrawingMode = true;
+        canvas.freeDrawingBrush.width = currentStrokeWidth; // Apply current stroke width
+        canvas.on('mouse:up', function() {
+          canvas.isDrawingMode = false;
+          saveCanvasState();
+        });
+      }
+
+      function clearCanvas() {
+        canvas.clear();
+        history = [];
+        localStorage.setItem('canvasData', '')
+      }
+
+      function saveCanvasState() {
+        history.push(canvas.toJSON());
+        console.log("history", history);
+        history.splice(0, history.length - 10); // Limit history to 10 states
+        // Get a JSON representation of the canvas objects
+        let canvasJSON = JSON.stringify(canvas);
+
+        // Store the JSON in local storage
+        localStorage.setItem('canvasData', canvasJSON);
+      }
+
+      function setStrokeWidth(e) {
+        currentStrokeWidth = parseInt(e.target.value);
+        canvas.freeDrawingBrush.width = currentStrokeWidth;
+        let activeObject = canvas.getActiveObject();
+        if (activeObject) {
+          activeObject.set('strokeWidth', parseInt(e.target.value));
+          canvas.renderAll();
+        }
+      }
+
+      function setFillColor(e) {
+        currentFillColor = e.target.value;
+        let activeObject = canvas.getActiveObject();
+        if (activeObject) {
+          activeObject.set('fill', e.target.value);
+          canvas.renderAll();
+        }
+      }
+
+      function setStrokeColor(e) {
+        currentStrokeColor = e.target.value;
+        let activeObject = canvas.getActiveObject();
+        if (activeObject) {
+          activeObject.set('stroke', e.target.value);
+          canvas.renderAll();
+        }
+      }
+
+      function zoom(factor) {
+        // Get the current zoom level
+        let currentZoom = canvas.getZoom();
+
+        // Calculate the new zoom level
+        let newZoom = Math.max(0.1, Math.min(currentZoom * factor, 4)); // Limit zoom range
+
+        // Apply the zoom to all objects on the canvas
+        canvas.zoomToPoint(new fabric.Point(canvas.getWidth() / 2, canvas.getHeight() / 2), newZoom);
+      }
+
+
+      // Add event listener to the font family selector
+      document.getElementById('fontFamilySelector').addEventListener('change', function () {
+        let selectedFont = this.value;
+        let activeObject = canvas.getActiveObject();
+
+        if (activeObject && activeObject.type === 'textbox') {
+          activeObject.set('fontFamily', selectedFont);
+          canvas.renderAll(); // Re-render the canvas to reflect changes
+          saveCanvasState();
+        }
+      });
+
+      canvas.on('object:modified', function (e) {
+        console.log("e", e);
+        // saveCanvasState();
+        if (e.target.type !== 'group' && !e.target.wasTransformed) { // Example filter
+          saveCanvasState();
+        }
+        let activeObject = canvas.getActiveObject();
+        let canvasJSON = JSON.stringify(canvas);
+
+        // Store the JSON in local storage
+        localStorage.setItem('canvasData', canvasJSON);
+      });
+
+      canvas.on('mouse:down', function (e) {
+        console.log("e", e);
+        let activeObject = canvas.getActiveObject();
+        if (activeObject) {
+          document.getElementById('fillColor').value = activeObject.fill;
+          document.getElementById('strokeColor').value = activeObject.stroke;
+          document.getElementById('strokeWidth').value = activeObject.strokeWidth;
+        }
+      });
+
+    });
+  </script>
+</body>
+
+</html>

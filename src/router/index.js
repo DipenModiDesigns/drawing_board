@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 import drawingBoard from "../pages/drawingBoard.vue";
+import newBoard from "../pages/newBoard.vue";
 
 
 const routes = [
@@ -9,6 +10,11 @@ const routes = [
     name: "Home",
     component: drawingBoard,
   },
+  {
+    path: "/new",
+    name: "New",
+    component: newBoard,
+  }
 ];
 
 
